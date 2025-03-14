@@ -1,13 +1,13 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
-	mySetting: string;
+	hsNumber: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+	hsNumber: '5'
 }
 
 export default class MyPlugin extends Plugin {
@@ -19,7 +19,7 @@ export default class MyPlugin extends Plugin {
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+			new Notice('This is a notice hellow!');
 		});
 		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
@@ -36,15 +36,92 @@ export default class MyPlugin extends Plugin {
 				new SampleModal(this.app).open();
 			}
 		});
+
+		/*
+
+editor.replaceRange(
+          moment().format('YYYY-MM-DD'),
+          editor.getCursor()
+        );
+		*/
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
+			id: 'selection-search-genes',
+			name: 'Search selected gene',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				const number_of_hits = this.settings.hsNumber;
+				console.log(number_of_hits);
+				const selection = editor.getSelection();
+				console.log(selection);
+
+				const response = await fetch(`https://clinicaltables.nlm.nih.gov/api/ncbi_genes/v3/search?terms=${selection}&maxList=${number_of_hits}`);
+				const data = await response.json();
+
+				const geneList = data[3].map((genes: Array<string>) => {
+					// console.log(genes);
+					const gene_symbol: string = genes[3];
+					const type: string = genes[5];
+					const full_name: string = genes[4];
+					// const hgnc_id: string = genes[1];
+					//
+					console.log(gene_symbol);
+					return `* [[${gene_symbol}]] - ${full_name} (${type})`
+				}).join('\n');
+				const result = `Possible genes:\n${geneList}`;
+
+				editor.replaceSelection(result);
 			}
 		});
+
+		this.addCommand({
+			id: 'fill-gene-card',
+			name: 'Complete gene card',
+			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
+				
+				const fbase = view.file.basename;
+				console.log(fbase);
+				
+				const query_url = `https://clinicaltables.nlm.nih.gov/api/ncbi_genes/v3/search?terms=${fbase}&sf=Symbol&maxList=1`;
+				const response = await fetch(query_url);
+				const data = await response.json();
+
+				if (data[3].length < 1) {
+					new ErrorGeneSymbol(this.app).open();
+					return; 
+				}
+				const hgnc_id = data[1][0];
+				const hgnc_url = `https://rest.genenames.org/fetch/hgnc_id/${hgnc_id}`;
+
+				const hgncResponse = await fetch(hgnc_url, {
+					headers: {
+						'Accept': 'application/json'
+					}
+				});
+				const hgncData = await hgncResponse.json();
+				const geneInfo = hgncData.response.docs[0];
+				const location = geneInfo.location;
+				const ensemblGeneId = geneInfo.ensembl_gene_id;
+				const ncbiGeneId = geneInfo.entrez_id;
+				const genename = geneInfo.name;
+
+				const geneText = `---
+genename: ${genename}
+tags:
+  - gene
+---
+
+* links: [Hugo](https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/${hgnc_id}), [ncbi](https://www.ncbi.nlm.nih.gov/gene/${ncbiGeneId}), 
+* location: ${location}
+* ensembl gene id: ${ensemblGeneId}
+`;
+				
+				editor.replaceRange(
+					geneText,
+					editor.getCursor()
+				  );
+			}
+		});
+
 		// This adds a complex command that can check whether the current state of the app allows execution of the command
 		this.addCommand({
 			id: 'open-sample-modal-complex',
@@ -67,12 +144,6 @@ export default class MyPlugin extends Plugin {
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
@@ -107,6 +178,22 @@ class SampleModal extends Modal {
 	}
 }
 
+class ErrorGeneSymbol extends Modal {
+	constructor(app: App) {
+		super(app);
+	}
+
+	onOpen() {
+		const {contentEl} = this;
+		contentEl.setText('Error in searching the gene symbol');
+	}
+
+	onClose() {
+		const {contentEl} = this;
+		contentEl.empty();
+	}
+}
+
 class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
@@ -121,13 +208,13 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('Number of results')
+			.setDesc('Number of genes to return when using the highlight search.')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setPlaceholder('5')
+				.setValue(this.plugin.settings.hsNumber)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.hsNumber = value;
 					await this.plugin.saveSettings();
 				}));
 	}
