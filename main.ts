@@ -117,7 +117,6 @@ tags:
 			name: 'DOI search',
 			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
 				const selection = editor.getSelection();
-				console.log(selection);
 
 				const query = `DOI:"${selection}"`;
 
@@ -191,8 +190,11 @@ tags:
 				} catch (error) {
 					new ErrorArticleCreation(this.app).open();
 					console.error(`Failed to create file: ${error}`);
+					return;
 				}
-				
+
+				const txtback = `[[${slug}]]`;
+				editor.replaceSelection(txtback);
 			}
 		});
 
