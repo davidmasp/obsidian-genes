@@ -1,13 +1,18 @@
-import { App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+
+import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault } from 'obsidian';
+import { extractPaperInfo, generateLinkChain } from './utils';
+import { generateArticleTemplate } from './templates';
 
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
 	hsNumber: string;
+	newFilesFolder: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	hsNumber: '5'
+	hsNumber: '5',
+	newFilesFolder: 'articles'
 }
 
 export default class MyPlugin extends Plugin {
@@ -17,7 +22,7 @@ export default class MyPlugin extends Plugin {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
+		const ribbonIconEl = this.addRibbonIcon('dice', 'Genes', (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
 			new Notice('This is a notice hellow!');
 		});
@@ -28,22 +33,7 @@ export default class MyPlugin extends Plugin {
 		const statusBarItemEl = this.addStatusBarItem();
 		statusBarItemEl.setText('Status Bar Text');
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
 
-		/*
-
-editor.replaceRange(
-          moment().format('YYYY-MM-DD'),
-          editor.getCursor()
-        );
-		*/
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
 			id: 'selection-search-genes',
@@ -77,17 +67,17 @@ editor.replaceRange(
 			id: 'fill-gene-card',
 			name: 'Complete gene card',
 			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
-				
+
 				const fbase = view.file.basename;
 				console.log(fbase);
-				
+
 				const query_url = `https://clinicaltables.nlm.nih.gov/api/ncbi_genes/v3/search?terms=${fbase}&sf=Symbol&maxList=1`;
 				const response = await fetch(query_url);
 				const data = await response.json();
 
 				if (data[3].length < 1) {
 					new ErrorGeneSymbol(this.app).open();
-					return; 
+					return;
 				}
 				const hgnc_id = data[1][0];
 				const hgnc_url = `https://rest.genenames.org/fetch/hgnc_id/${hgnc_id}`;
@@ -114,31 +104,95 @@ tags:
 * location: ${location}
 * ensembl gene id: ${ensemblGeneId}
 `;
-				
+
 				editor.replaceRange(
 					geneText,
 					editor.getCursor()
-				  );
+				);
 			}
 		});
 
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
 		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+			id: 'retrieve-doi-info',
+			name: 'DOI search',
+			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
+				const selection = editor.getSelection();
+				console.log(selection);
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+				const query = `DOI:"${selection}"`;
+
+				const base_url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search";
+				const params: { [key: string]: string } = {
+					query: query,
+					resultType: "core",
+					cursorMark: "*",
+					pageSize: "25",
+					format: "json"
+				};
+
+				const url = new URL(base_url);
+				Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+
+				const response = await fetch(url.toString());
+				const data = await response.json();
+
+				if (data.hitCount !== 1) {
+					console.log(`Error: Expected 1 result, but got ${data.hitCount} results.`);
+					return;
 				}
+
+				const result = data.resultList.result[0];
+				const linkChain = generateLinkChain(result);
+
+				const year = parseInt(result.pubYear || "0");
+				const author = result.authorString || "";
+				const journal = (result.journalInfo?.journal?.title || result.bookOrReportDetails?.publisher) || "";
+				const abstract = result.abstractText || "";
+				const full_title = result.title || "";
+				const link_chain = linkChain;
+
+				const [auth_name, journal_name, year_name] = extractPaperInfo(result);
+
+				const articleTxt = generateArticleTemplate(
+					link_chain,
+					journal_name,
+					full_title,
+					author,
+					abstract
+				)
+
+				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
+				const slug = `${auth_name} ${journal_name} ${year_name}`;
+				const fileName = `${slug}.md`;
+				const filePath = `${folder}/${fileName}`;
+
+				// check if file exists in that specific path
+				const vault = this.app.vault;
+				const fileExists = await vault.adapter.exists(filePath);
+				if (fileExists) {
+					console.log(`File already exists at: ${filePath}`);
+					new ErrorArticleCreation(this.app).open();
+					return;
+				}
+
+				const all_files: TFile[] = await vault.getFiles();
+				console.log(all_files.length);
+				const vaultFileExists = all_files.some(file => file.basename === slug);
+				
+				if (vaultFileExists) {
+					console.log(`File already exists with basename: ${fileName}`);
+					new ErrorArticleCreation(this.app).open();
+					return;
+				}
+
+				try {
+					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
+					console.log(`File created at: ${fileobj.path}`);
+				} catch (error) {
+					new ErrorArticleCreation(this.app).open();
+					console.error(`Failed to create file: ${error}`);
+				}
+				
 			}
 		});
 
@@ -168,12 +222,12 @@ class SampleModal extends Modal {
 	}
 
 	onOpen() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.setText('Woah!');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
@@ -184,12 +238,28 @@ class ErrorGeneSymbol extends Modal {
 	}
 
 	onOpen() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.setText('Error in searching the gene symbol');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorArticleCreation extends Modal {
+	constructor(app: App) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText('Error in creating the article');
+	}
+
+	onClose() {
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
@@ -203,7 +273,7 @@ class SampleSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
@@ -215,6 +285,17 @@ class SampleSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.hsNumber)
 				.onChange(async (value) => {
 					this.plugin.settings.hsNumber = value;
+					await this.plugin.saveSettings();
+				}));
+		
+		new Setting(containerEl)
+			.setName('New files')
+			.setDesc('Path to create new article files')
+			.addText(text => text
+				.setPlaceholder('articles')
+				.setValue(this.plugin.settings.newFilesFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.newFilesFolder = value;
 					await this.plugin.saveSettings();
 				}));
 	}
