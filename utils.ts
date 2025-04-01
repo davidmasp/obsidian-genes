@@ -10,6 +10,11 @@ export function extractPaperInfo(result: any): [string, string, string] {
         journal = result.bookOrReportDetails?.publisher || "";
     }
 
+    journal = journal
+        .split(" ")
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join("");
+
     const year = result.pubYear || "";
 
     return [firstAuthorLastname, journal, year];
