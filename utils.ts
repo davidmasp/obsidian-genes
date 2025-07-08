@@ -26,3 +26,28 @@ export function generateLinkChain(result: any): string {
     );
     return linksArr.join(" | ");
 }
+
+export function parseArxivXML(xml: string): any {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xml, "text/xml");
+
+    const entry = xmlDoc.querySelector("entry");
+    if (!entry) {
+        return null;
+    }
+
+    const title = entry.querySelector("title")?.textContent || "";
+    const summary = entry.querySelector("summary")?.textContent || "";
+    const authors = Array.from(entry.querySelectorAll("author")).map(author => author.querySelector("name")?.textContent || "").join(", ");
+    const published = entry.querySelector("published")?.textContent || "";
+    const year = new Date(published).getFullYear().toString();
+    const id = entry.querySelector("id")?.textContent || "";
+
+    return {
+        title,
+        summary,
+        authors,
+        year,
+        id
+    };
+}

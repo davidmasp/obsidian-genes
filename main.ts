@@ -1,6 +1,6 @@
 
 import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault } from 'obsidian';
-import { extractPaperInfo, generateLinkChain } from './utils';
+import { extractPaperInfo, generateLinkChain, parseArxivXML } from './utils';
 import { generateArticleTemplate } from './templates';
 
 // Remember to rename these classes and interfaces!
@@ -162,6 +162,71 @@ tags:
 
 				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
 				const slug = `${auth_name} ${journal_name} ${year_name}`;
+				const fileName = `${slug}.md`;
+				const filePath = `${folder}/${fileName}`;
+
+				// check if file exists in that specific path
+				const vault = this.app.vault;
+				const fileExists = await vault.adapter.exists(filePath);
+				if (fileExists) {
+					console.log(`File already exists at: ${filePath}`);
+					new ErrorArticleCreation(this.app).open();
+					return;
+				}
+
+				const all_files: TFile[] = await vault.getFiles();
+				console.log(all_files.length);
+				const vaultFileExists = all_files.some(file => file.basename === slug);
+				
+				if (vaultFileExists) {
+					console.log(`File already exists with basename: ${fileName}`);
+					new ErrorArticleCreation(this.app).open();
+					return;
+				}
+
+				try {
+					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
+					console.log(`File created at: ${fileobj.path}`);
+				} catch (error) {
+					new ErrorArticleCreation(this.app).open();
+					console.error(`Failed to create file: ${error}`);
+					return;
+				}
+
+				const txtback = `[[${slug}]]`;
+				editor.replaceSelection(txtback);
+			}
+		});
+
+		this.addCommand({
+			id: 'retrieve-arxiv-info',
+			name: 'Arxiv search',
+			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
+				const selection = editor.getSelection();
+
+				const query_url = `https://export.arxiv.org/api/query?id_list=${selection}`;
+				const response = await fetch(query_url);
+				const data = await response.text();
+
+				const paperInfo = parseArxivXML(data);
+
+				if (!paperInfo) {
+					new Notice("Error parsing Arxiv response");
+					return;
+				}
+
+				const { title, summary, authors, year, id } = paperInfo;
+
+				const articleTxt = generateArticleTemplate(
+					`[Arxiv](${id})`,
+					"Arxiv",
+					title,
+					authors,
+					summary
+				)
+
+				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
+				const slug = `${authors.split(",")[0]} Arxiv ${year}`;
 				const fileName = `${slug}.md`;
 				const filePath = `${folder}/${fileName}`;
 
