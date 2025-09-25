@@ -1,4 +1,29 @@
-# Obsidian Sample Plugin
+# Obsidian Genes
+
+This is a custom plugin that I originally developed
+for my particular needs. Some might be your particular
+needs too. It's heavily opinionated and does not
+aim at long term maintainability.
+
+
+
+
+## Dev notes
+
+Once edited do:
+
+* Close obsidian
+* build plugin, `npm run build`
+* copy plugin file to obsidian path
+
+```bash
+cp main.js ~/FILES/vaults/dmp/.obsidian/plugins/obsidian-genes/main.js
+```
+
+* Restart obsidian
+
+
+## OLD README
 
 This is a sample plugin for Obsidian (https://obsidian.md).
 

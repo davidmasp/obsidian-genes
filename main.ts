@@ -1,6 +1,6 @@
 
 import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault } from 'obsidian';
-import { extractPaperInfo, generateLinkChain, parseArxivXML } from './utils';
+import { extractPaperInfo, generateMasterLink, generateLinkChain, parseArxivXML } from './utils';
 import { generateArticleTemplate } from './templates';
 
 // Remember to rename these classes and interfaces!
@@ -8,11 +8,13 @@ import { generateArticleTemplate } from './templates';
 interface MyPluginSettings {
 	hsNumber: string;
 	newFilesFolder: string;
+	templatePath: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	hsNumber: '5',
-	newFilesFolder: 'articles'
+	newFilesFolder: 'articles',
+	templatePath: 'templates/article-template.md'
 }
 
 export default class MyPlugin extends Plugin {
@@ -142,18 +144,21 @@ tags:
 
 				const result = data.resultList.result[0];
 				const linkChain = generateLinkChain(result);
+				const masterLink = generateMasterLink(result);
 
 				const year = parseInt(result.pubYear || "0");
 				const author = result.authorString || "";
 				const journal = (result.journalInfo?.journal?.title || result.bookOrReportDetails?.publisher) || "";
 				const abstract = result.abstractText || "";
 				const full_title = result.title || "";
-				const link_chain = linkChain;
 
 				const [auth_name, journal_name, year_name] = extractPaperInfo(result);
 
-				const articleTxt = generateArticleTemplate(
-					link_chain,
+				const articleTxt = await generateArticleTemplate(
+					this.app.vault,
+					this.settings.templatePath,
+					masterLink,
+					linkChain,
 					journal_name,
 					full_title,
 					author,
@@ -217,7 +222,10 @@ tags:
 
 				const { title, summary, authors, year, id } = paperInfo;
 
-				const articleTxt = generateArticleTemplate(
+				const articleTxt = await generateArticleTemplate(
+					this.app.vault,
+					this.settings.templatePath,
+				 	id,
 					`[Arxiv](${id})`,
 					"Arxiv",
 					title,
@@ -363,6 +371,17 @@ class SampleSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.newFilesFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.newFilesFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Template file path')
+			.setDesc('Path to the template file in your vault (e.g., templates/article-template.md)')
+			.addText(text => text
+				.setPlaceholder('templates/article-template.md')
+				.setValue(this.plugin.settings.templatePath)
+				.onChange(async (value) => {
+					this.plugin.settings.templatePath = value;
 					await this.plugin.saveSettings();
 				}));
 	}

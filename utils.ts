@@ -27,6 +27,15 @@ export function generateLinkChain(result: any): string {
     return linksArr.join(" | ");
 }
 
+export function generateMasterLink(result: any): string {
+    const firstUrl = result.fullTextUrlList.fullTextUrl[0];
+    if (!firstUrl) {
+        return "";
+    }
+    console.log("First URL:", firstUrl);
+    return `${firstUrl.url}`;
+}
+
 export function parseArxivXML(xml: string): any {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xml, "text/xml");
