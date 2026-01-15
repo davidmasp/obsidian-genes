@@ -5,10 +5,7 @@ for my particular needs. Some might be your particular
 needs too. It's heavily opinionated and does not
 aim at long term maintainability.
 
-
-
-
-## Dev notes
+## Dev notes - from me
 
 Once edited do:
 
@@ -17,11 +14,10 @@ Once edited do:
 * copy plugin file to obsidian path
 
 ```bash
-cp main.js ~/FILES/vaults/dmp/.obsidian/plugins/obsidian-genes/main.js
+just localbuild
 ```
 
 * Restart obsidian
-
 
 ## OLD README
 

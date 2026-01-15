@@ -271,6 +271,84 @@ tags:
 			}
 		});
 
+		this.addCommand({
+			id: 'retrieve-biorxiv-info',
+			name: 'Biorxiv search',
+			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
+				const selection = editor.getSelection();
+
+				const query_url = `https://api.biorxiv.org/details/biorxiv/${selection}/na/json`;
+				const response = await fetch(query_url);
+				const data = await response.json();
+
+				if (!data.collection || data.collection.length === 0) {
+					new Notice("Error: No results found for this DOI");
+					return;
+				}
+
+				const paper = data.collection[0];
+				const title = paper.title || "";
+				const abstract = (paper.abstract || "").replace(/\n\n/g, " ");
+				const authors = paper.authors || "";
+				const doi = paper.doi || "";
+				const date = paper.date || "";
+				const year = date.split("-")[0];
+
+				const doiUrl = `https://doi.org/${doi}`;
+				const masterLink = doiUrl;
+				const linkChain = `[Biorxiv](https://www.biorxiv.org/content/${doi})`;
+
+				const articleTxt = await generateArticleTemplate(
+					this.app.vault,
+					this.settings.templatePath,
+					masterLink,
+					linkChain,
+					"Biorxiv",
+					title,
+					authors,
+					abstract
+				)
+
+				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
+				// Get first author's last name (authors are semicolon separated)
+				const firstAuthor = authors.split(";")[0].split(",")[0].trim();
+				const slug = `${firstAuthor} Biorxiv ${year}`;
+				const fileName = `${slug}.md`;
+				const filePath = `${folder}/${fileName}`;
+
+				// check if file exists in that specific path
+				const vault = this.app.vault;
+				const fileExists = await vault.adapter.exists(filePath);
+				if (fileExists) {
+					console.log(`File already exists at: ${filePath}`);
+					new ErrorArticleCreation(this.app).open();
+					return;
+				}
+
+				const all_files: TFile[] = await vault.getFiles();
+				console.log(all_files.length);
+				const vaultFileExists = all_files.some(file => file.basename === slug);
+				
+				if (vaultFileExists) {
+					console.log(`File already exists with basename: ${fileName}`);
+					new ErrorArticleCreation(this.app).open();
+					return;
+				}
+
+				try {
+					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
+					console.log(`File created at: ${fileobj.path}`);
+				} catch (error) {
+					new ErrorArticleCreation(this.app).open();
+					console.error(`Failed to create file: ${error}`);
+					return;
+				}
+
+				const txtback = `[[${slug}]]`;
+				editor.replaceSelection(txtback);
+			}
+		});
+
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
