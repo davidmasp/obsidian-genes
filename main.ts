@@ -17,6 +17,16 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	templatePath: 'templates/article-template.md'
 }
 
+function sanitizeFileNameSegment(value: string): string {
+	return value
+		.replace(/[\u0000-\u001f]/g, ' ')
+		.replace(/[\\/:]/g, ' ')
+		.replace(/\s+/g, ' ')
+		.replace(/^\.+/, '')
+		.replace(/\.+$/, '')
+		.trim();
+}
+
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 
@@ -137,8 +147,13 @@ tags:
 				const response = await fetch(url.toString());
 				const data = await response.json();
 
+				if (data.hitCount === 0) {
+					new ErrorNoPaperEuropePmc(this.app).open();
+					return;
+				}
+
 				if (data.hitCount !== 1) {
-					console.log(`Error: Expected 1 result, but got ${data.hitCount} results.`);
+					new ErrorUnexpectedEuropePmcHits(this.app, data.hitCount).open();
 					return;
 				}
 
@@ -166,7 +181,12 @@ tags:
 				)
 
 				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
-				const slug = `${auth_name} ${journal_name} ${year_name}`;
+				const rawSlug = `${auth_name} ${journal_name} ${year_name}`;
+				const slug = sanitizeFileNameSegment(rawSlug);
+				if (!slug) {
+					new ErrorInvalidArticleName(this.app, rawSlug).open();
+					return;
+				}
 				const fileName = `${slug}.md`;
 				const filePath = `${folder}/${fileName}`;
 
@@ -175,7 +195,7 @@ tags:
 				const fileExists = await vault.adapter.exists(filePath);
 				if (fileExists) {
 					console.log(`File already exists at: ${filePath}`);
-					new ErrorArticleCreation(this.app).open();
+					new ErrorArticleAlreadyExists(this.app, fileName).open();
 					return;
 				}
 
@@ -185,7 +205,7 @@ tags:
 				
 				if (vaultFileExists) {
 					console.log(`File already exists with basename: ${fileName}`);
-					new ErrorArticleCreation(this.app).open();
+					new ErrorArticleAlreadyExistsInVault(this.app, fileName).open();
 					return;
 				}
 
@@ -193,8 +213,9 @@ tags:
 					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
 					console.log(`File created at: ${fileobj.path}`);
 				} catch (error) {
-					new ErrorArticleCreation(this.app).open();
-					console.error(`Failed to create file: ${error}`);
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					new ErrorArticleCreation(this.app, errorMessage).open();
+					console.error(`Failed to create file: ${errorMessage}`);
 					return;
 				}
 
@@ -216,7 +237,7 @@ tags:
 				const paperInfo = parseArxivXML(data);
 
 				if (!paperInfo) {
-					new Notice("Error parsing Arxiv response");
+					new ErrorNoPaperArxiv(this.app).open();
 					return;
 				}
 
@@ -234,7 +255,12 @@ tags:
 				)
 
 				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
-				const slug = `${authors.split(",")[0]} Arxiv ${year}`;
+				const rawSlug = `${authors.split(",")[0]} Arxiv ${year}`;
+				const slug = sanitizeFileNameSegment(rawSlug);
+				if (!slug) {
+					new ErrorInvalidArticleName(this.app, rawSlug).open();
+					return;
+				}
 				const fileName = `${slug}.md`;
 				const filePath = `${folder}/${fileName}`;
 
@@ -243,7 +269,7 @@ tags:
 				const fileExists = await vault.adapter.exists(filePath);
 				if (fileExists) {
 					console.log(`File already exists at: ${filePath}`);
-					new ErrorArticleCreation(this.app).open();
+					new ErrorArticleAlreadyExists(this.app, fileName).open();
 					return;
 				}
 
@@ -253,7 +279,7 @@ tags:
 				
 				if (vaultFileExists) {
 					console.log(`File already exists with basename: ${fileName}`);
-					new ErrorArticleCreation(this.app).open();
+					new ErrorArticleAlreadyExistsInVault(this.app, fileName).open();
 					return;
 				}
 
@@ -261,8 +287,9 @@ tags:
 					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
 					console.log(`File created at: ${fileobj.path}`);
 				} catch (error) {
-					new ErrorArticleCreation(this.app).open();
-					console.error(`Failed to create file: ${error}`);
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					new ErrorArticleCreation(this.app, errorMessage).open();
+					console.error(`Failed to create file: ${errorMessage}`);
 					return;
 				}
 
@@ -282,7 +309,7 @@ tags:
 				const data = await response.json();
 
 				if (!data.collection || data.collection.length === 0) {
-					new Notice("Error: No results found for this DOI");
+					new ErrorNoPaperBiorxiv(this.app).open();
 					return;
 				}
 
@@ -312,7 +339,12 @@ tags:
 				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
 				// Get first author's last name (authors are semicolon separated)
 				const firstAuthor = authors.split(";")[0].split(",")[0].trim();
-				const slug = `${firstAuthor} Biorxiv ${year}`;
+				const rawSlug = `${firstAuthor} Biorxiv ${year}`;
+				const slug = sanitizeFileNameSegment(rawSlug);
+				if (!slug) {
+					new ErrorInvalidArticleName(this.app, rawSlug).open();
+					return;
+				}
 				const fileName = `${slug}.md`;
 				const filePath = `${folder}/${fileName}`;
 
@@ -321,7 +353,7 @@ tags:
 				const fileExists = await vault.adapter.exists(filePath);
 				if (fileExists) {
 					console.log(`File already exists at: ${filePath}`);
-					new ErrorArticleCreation(this.app).open();
+					new ErrorArticleAlreadyExists(this.app, fileName).open();
 					return;
 				}
 
@@ -331,7 +363,7 @@ tags:
 				
 				if (vaultFileExists) {
 					console.log(`File already exists with basename: ${fileName}`);
-					new ErrorArticleCreation(this.app).open();
+					new ErrorArticleAlreadyExistsInVault(this.app, fileName).open();
 					return;
 				}
 
@@ -339,8 +371,9 @@ tags:
 					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
 					console.log(`File created at: ${fileobj.path}`);
 				} catch (error) {
-					new ErrorArticleCreation(this.app).open();
-					console.error(`Failed to create file: ${error}`);
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					new ErrorArticleCreation(this.app, errorMessage).open();
+					console.error(`Failed to create file: ${errorMessage}`);
 					return;
 				}
 
@@ -392,7 +425,80 @@ class ErrorGeneSymbol extends Modal {
 
 	onOpen() {
 		const { contentEl } = this;
-		contentEl.setText('Error in searching the gene symbol');
+		contentEl.setText('⚠️ Error in searching the gene symbol');
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorNoPaperEuropePmc extends Modal {
+	constructor(app: App) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText('🔎 No paper found for this DOI in Europe PMC.');
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorUnexpectedEuropePmcHits extends Modal {
+	hitCount: number;
+
+	constructor(app: App, hitCount: number) {
+		super(app);
+		this.hitCount = hitCount;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText(`⚠️ Expected 1 paper, but got ${this.hitCount}.`);
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorArticleAlreadyExists extends Modal {
+	fileName: string;
+
+	constructor(app: App, fileName: string) {
+		super(app);
+		this.fileName = fileName;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText(`📄 Article already exists: ${this.fileName}`);
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorArticleAlreadyExistsInVault extends Modal {
+	fileName: string;
+
+	constructor(app: App, fileName: string) {
+		super(app);
+		this.fileName = fileName;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText(`📄 Article already exists in vault: ${this.fileName}`);
 	}
 
 	onClose() {
@@ -402,13 +508,67 @@ class ErrorGeneSymbol extends Modal {
 }
 
 class ErrorArticleCreation extends Modal {
+	errorMessage: string;
+
+	constructor(app: App, errorMessage: string) {
+		super(app);
+		this.errorMessage = errorMessage;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText(`⚠️ Failed to create the article file.\n${this.errorMessage}`);
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorInvalidArticleName extends Modal {
+	rawName: string;
+
+	constructor(app: App, rawName: string) {
+		super(app);
+		this.rawName = rawName;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText(`⚠️ Could not create a valid file name from: ${this.rawName}`);
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorNoPaperArxiv extends Modal {
 	constructor(app: App) {
 		super(app);
 	}
 
 	onOpen() {
 		const { contentEl } = this;
-		contentEl.setText('Error in creating the article');
+		contentEl.setText('🔎 No paper found for this arXiv ID.');
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorNoPaperBiorxiv extends Modal {
+	constructor(app: App) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText('🔎 No paper found for this DOI in bioRxiv.');
 	}
 
 	onClose() {

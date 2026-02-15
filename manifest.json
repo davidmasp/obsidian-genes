@@ -1,11 +1,10 @@
 {
 	"id": "obsidian-genes",
 	"name": "Genes",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"minAppVersion": "0.15.0",
-	"description": "Search and interact with the Clinical Table gene API",
+	"description": "Gene lookup and paper-note generation from DOI, arXiv, and bioRxiv identifiers.",
 	"author": "David Mas-Ponte",
 	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }
