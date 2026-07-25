@@ -41,6 +41,7 @@ When creating article files, the plugin reads `Template file path` and replaces 
 - `{{title}}`
 - `{{authors}}`
 - `{{abstract}}`
+- `{{doi}}`
 - `{{date_added}}` (YYYY-MM-DD)
 
 If the template file does not exist or cannot be read, it falls back to a built-in template.

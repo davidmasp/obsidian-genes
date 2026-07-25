@@ -9,7 +9,8 @@ export async function generateArticleTemplate(
     journal: string, 
     title: string, 
     authors: string, 
-    abstract: string
+    abstract: string,
+    doi: string = ""
 ): Promise<string> {
     try {
         // Try to read the template file from the vault
@@ -28,6 +29,7 @@ export async function generateArticleTemplate(
                 .replace(/{{title}}/g, title)
                 .replace(/{{authors}}/g, authors)
                 .replace(/{{abstract}}/g, abstract)
+                .replace(/{{doi}}/g, doi)
                 .replace(/{{date_added}}/g, today);
                 
             return templateContent;
@@ -37,15 +39,16 @@ export async function generateArticleTemplate(
     } catch (error) {
         console.error('Error reading template:', error);
         // Fallback to the original hardcoded template
-        return generateFallbackTemplate(link_chain, journal, title, authors, abstract);
+        return generateFallbackTemplate(link_chain, journal, title, authors, abstract, doi);
     }
 }
 
-function generateFallbackTemplate(link_chain: string, journal: string, title: string, authors: string, abstract: string): string {
+function generateFallbackTemplate(link_chain: string, journal: string, title: string, authors: string, abstract: string, doi: string): string {
     const today = new Date().toISOString().split('T')[0];
     return `
 * 🔗 Links:: ${link_chain}
-* 🍹 Overview::
+${doi ? `* DOI:: ${doi}
+` : ""}* 🍹 Overview::
     * 
 * 🙋🏻‍♂️ Authors:: 
 * 📑 Journal:: [[${journal}]]

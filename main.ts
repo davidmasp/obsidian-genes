@@ -1,5 +1,5 @@
 
-import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault } from 'obsidian';
+import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault, requestUrl } from 'obsidian';
 import { extractPaperInfo, generateMasterLink, generateLinkChain, parseArxivXML } from './utils';
 import { generateArticleTemplate } from './templates';
 
@@ -166,6 +166,7 @@ tags:
 				const journal = (result.journalInfo?.journal?.title || result.bookOrReportDetails?.publisher) || "";
 				const abstract = result.abstractText || "";
 				const full_title = result.title || "";
+				const doi = result.doi || selection.trim();
 
 				const [auth_name, journal_name, year_name] = extractPaperInfo(result);
 
@@ -177,7 +178,8 @@ tags:
 					journal_name,
 					full_title,
 					author,
-					abstract
+					abstract,
+					doi
 				)
 
 				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
@@ -231,8 +233,8 @@ tags:
 				const selection = editor.getSelection();
 
 				const query_url = `https://export.arxiv.org/api/query?id_list=${selection}`;
-				const response = await fetch(query_url);
-				const data = await response.text();
+				const response = await requestUrl({ url: query_url });
+				const data = response.text;
 
 				const paperInfo = parseArxivXML(data);
 
@@ -317,7 +319,7 @@ tags:
 				const title = paper.title || "";
 				const abstract = (paper.abstract || "").replace(/\n\n/g, " ");
 				const authors = paper.authors || "";
-				const doi = paper.doi || "";
+				const doi = paper.doi || selection.trim();
 				const date = paper.date || "";
 				const year = date.split("-")[0];
 
@@ -333,7 +335,8 @@ tags:
 					"Biorxiv",
 					title,
 					authors,
-					abstract
+					abstract,
+					doi
 				)
 
 				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
