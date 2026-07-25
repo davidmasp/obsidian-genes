@@ -6,7 +6,7 @@ Current version: `1.1.0`
 
 ## What it does
 
-The plugin currently provides 5 editor commands:
+The plugin currently provides 6 editor commands:
 
 1. `Search selected gene`
 Searches the selected text against the NCBI Clinical Tables gene API and replaces the selection with a bullet list of possible gene matches.
@@ -17,10 +17,13 @@ Uses the current note filename as gene symbol, queries HGNC, and inserts a small
 3. `DOI search`
 Looks up the selected DOI in Europe PMC, builds a paper note from a template, creates a new file, and replaces the selected DOI with a wiki-link to the created note.
 
-4. `Arxiv search`
+4. `URL DOI search`
+Fetches the selected URL, extracts a DOI from publisher metadata or page text, then runs the same Europe PMC workflow as `DOI search`.
+
+5. `Arxiv search`
 Looks up the selected arXiv ID via arXiv API, builds a paper note from a template, creates a new file, and replaces the selected ID with a wiki-link.
 
-5. `Biorxiv search`
+6. `Biorxiv search`
 Looks up the selected DOI via bioRxiv API, builds a paper note from a template, creates a new file, and replaces the selected DOI with a wiki-link.
 
 ## Settings

@@ -1,3 +1,70 @@
+import { requestUrl } from 'obsidian';
+
+const DOI_PATTERN = /10\.\d{4,9}\/[-._;()/:A-Z0-9]+/i;
+const DOI_META_NAMES = new Set([
+    "citation_doi",
+    "dc.identifier",
+    "dc.identifier.doi",
+    "prism.doi",
+    "doi"
+]);
+
+function cleanDoiValue(value: string): string | null {
+    const match = value
+        .trim()
+        .replace(/^doi:\s*/i, "")
+        .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+        .replace(/^urn:doi:/i, "")
+        .match(DOI_PATTERN);
+
+    if (!match) {
+        return null;
+    }
+
+    let doi = match[0].replace(/[<>"'\s]+$/g, "").replace(/[.,;:]+$/g, "");
+
+    while (doi.endsWith(")") && (doi.match(/\(/g) || []).length < (doi.match(/\)/g) || []).length) {
+        doi = doi.slice(0, -1);
+    }
+
+    return doi;
+}
+
+export function extractDoiFromHtml(html: string): string | null {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const metaTags = Array.from(doc.querySelectorAll("meta"));
+
+    for (const tag of metaTags) {
+        const name = (tag.getAttribute("name") || tag.getAttribute("property") || "").toLowerCase();
+        if (!DOI_META_NAMES.has(name)) {
+            continue;
+        }
+
+        const content = tag.getAttribute("content");
+        if (!content) {
+            continue;
+        }
+
+        const doi = cleanDoiValue(content);
+        if (doi) {
+            return doi;
+        }
+    }
+
+    return cleanDoiValue(html);
+}
+
+export async function extractDoiFromUrl(url: string): Promise<string | null> {
+    const response = await requestUrl({
+        url,
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    });
+
+    return extractDoiFromHtml(response.text);
+}
+
 export function extractPaperInfo(result: any): [string, string, string] {
     const firstAuthor = result.authorList?.author?.[0] || {};
     let firstAuthorLastname = firstAuthor.lastName || "";

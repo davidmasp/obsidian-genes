@@ -1,6 +1,6 @@
 
 import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault, requestUrl } from 'obsidian';
-import { extractPaperInfo, generateMasterLink, generateLinkChain, parseArxivXML } from './utils';
+import { extractDoiFromUrl, extractPaperInfo, generateMasterLink, generateLinkChain, parseArxivXML } from './utils';
 import { generateArticleTemplate } from './templates';
 
 // Remember to rename these classes and interfaces!
@@ -129,100 +129,29 @@ tags:
 			name: 'DOI search',
 			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
 				const selection = editor.getSelection();
+				await this.createEuropePmcArticleFromDoi(selection, editor);
+			}
+		});
 
-				const query = `DOI:"${selection}"`;
-
-				const base_url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search";
-				const params: { [key: string]: string } = {
-					query: query,
-					resultType: "core",
-					cursorMark: "*",
-					pageSize: "25",
-					format: "json"
-				};
-
-				const url = new URL(base_url);
-				Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-
-				const response = await fetch(url.toString());
-				const data = await response.json();
-
-				if (data.hitCount === 0) {
-					new ErrorNoPaperEuropePmc(this.app).open();
-					return;
-				}
-
-				if (data.hitCount !== 1) {
-					new ErrorUnexpectedEuropePmcHits(this.app, data.hitCount).open();
-					return;
-				}
-
-				const result = data.resultList.result[0];
-				const linkChain = generateLinkChain(result);
-				const masterLink = generateMasterLink(result);
-
-				const year = parseInt(result.pubYear || "0");
-				const author = result.authorString || "";
-				const journal = (result.journalInfo?.journal?.title || result.bookOrReportDetails?.publisher) || "";
-				const abstract = result.abstractText || "";
-				const full_title = result.title || "";
-				const doi = result.doi || selection.trim();
-
-				const [auth_name, journal_name, year_name] = extractPaperInfo(result);
-
-				const articleTxt = await generateArticleTemplate(
-					this.app.vault,
-					this.settings.templatePath,
-					masterLink,
-					linkChain,
-					journal_name,
-					full_title,
-					author,
-					abstract,
-					doi
-				)
-
-				const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
-				const rawSlug = `${auth_name} ${journal_name} ${year_name}`;
-				const slug = sanitizeFileNameSegment(rawSlug);
-				if (!slug) {
-					new ErrorInvalidArticleName(this.app, rawSlug).open();
-					return;
-				}
-				const fileName = `${slug}.md`;
-				const filePath = `${folder}/${fileName}`;
-
-				// check if file exists in that specific path
-				const vault = this.app.vault;
-				const fileExists = await vault.adapter.exists(filePath);
-				if (fileExists) {
-					console.log(`File already exists at: ${filePath}`);
-					new ErrorArticleAlreadyExists(this.app, fileName).open();
-					return;
-				}
-
-				const all_files: TFile[] = await vault.getFiles();
-				console.log(all_files.length);
-				const vaultFileExists = all_files.some(file => file.basename === slug);
-				
-				if (vaultFileExists) {
-					console.log(`File already exists with basename: ${fileName}`);
-					new ErrorArticleAlreadyExistsInVault(this.app, fileName).open();
-					return;
-				}
+		this.addCommand({
+			id: 'retrieve-url-doi-info',
+			name: 'URL DOI search',
+			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
+				const selection = editor.getSelection().trim();
 
 				try {
-					const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
-					console.log(`File created at: ${fileobj.path}`);
+					const doi = await extractDoiFromUrl(selection);
+					if (!doi) {
+						new ErrorNoDoiInUrl(this.app).open();
+						return;
+					}
+
+					await this.createEuropePmcArticleFromDoi(doi, editor);
 				} catch (error) {
 					const errorMessage = error instanceof Error ? error.message : String(error);
-					new ErrorArticleCreation(this.app, errorMessage).open();
-					console.error(`Failed to create file: ${errorMessage}`);
-					return;
+					new ErrorDoiExtraction(this.app, errorMessage).open();
+					console.error(`Failed to extract DOI from URL: ${errorMessage}`);
 				}
-
-				const txtback = `[[${slug}]]`;
-				editor.replaceSelection(txtback);
 			}
 		});
 
@@ -396,6 +325,101 @@ tags:
 
 	}
 
+	async createEuropePmcArticleFromDoi(doiInput: string, editor: Editor) {
+		const doiQuery = doiInput.trim();
+		const query = `DOI:"${doiQuery}"`;
+
+		const base_url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search";
+		const params: { [key: string]: string } = {
+			query: query,
+			resultType: "core",
+			cursorMark: "*",
+			pageSize: "25",
+			format: "json"
+		};
+
+		const url = new URL(base_url);
+		Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+
+		const response = await fetch(url.toString());
+		const data = await response.json();
+
+		if (data.hitCount === 0) {
+			new ErrorNoPaperEuropePmc(this.app).open();
+			return;
+		}
+
+		if (data.hitCount !== 1) {
+			new ErrorUnexpectedEuropePmcHits(this.app, data.hitCount).open();
+			return;
+		}
+
+		const result = data.resultList.result[0];
+		const linkChain = generateLinkChain(result);
+		const masterLink = generateMasterLink(result);
+
+		const author = result.authorString || "";
+		const abstract = result.abstractText || "";
+		const full_title = result.title || "";
+		const doi = result.doi || doiQuery;
+
+		const [auth_name, journal_name, year_name] = extractPaperInfo(result);
+
+		const articleTxt = await generateArticleTemplate(
+			this.app.vault,
+			this.settings.templatePath,
+			masterLink,
+			linkChain,
+			journal_name,
+			full_title,
+			author,
+			abstract,
+			doi
+		)
+
+		const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
+		const rawSlug = `${auth_name} ${journal_name} ${year_name}`;
+		const slug = sanitizeFileNameSegment(rawSlug);
+		if (!slug) {
+			new ErrorInvalidArticleName(this.app, rawSlug).open();
+			return;
+		}
+		const fileName = `${slug}.md`;
+		const filePath = `${folder}/${fileName}`;
+
+		// check if file exists in that specific path
+		const vault = this.app.vault;
+		const fileExists = await vault.adapter.exists(filePath);
+		if (fileExists) {
+			console.log(`File already exists at: ${filePath}`);
+			new ErrorArticleAlreadyExists(this.app, fileName).open();
+			return;
+		}
+
+		const all_files: TFile[] = await vault.getFiles();
+		console.log(all_files.length);
+		const vaultFileExists = all_files.some(file => file.basename === slug);
+		
+		if (vaultFileExists) {
+			console.log(`File already exists with basename: ${fileName}`);
+			new ErrorArticleAlreadyExistsInVault(this.app, fileName).open();
+			return;
+		}
+
+		try {
+			const fileobj: TFile = await this.app.vault.create(filePath, articleTxt);
+			console.log(`File created at: ${fileobj.path}`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			new ErrorArticleCreation(this.app, errorMessage).open();
+			console.error(`Failed to create file: ${errorMessage}`);
+			return;
+		}
+
+		const txtback = `[[${slug}]]`;
+		editor.replaceSelection(txtback);
+	}
+
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
@@ -464,6 +488,41 @@ class ErrorUnexpectedEuropePmcHits extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.setText(`⚠️ Expected 1 paper, but got ${this.hitCount}.`);
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorNoDoiInUrl extends Modal {
+	constructor(app: App) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText('No DOI found in the selected URL.');
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
+class ErrorDoiExtraction extends Modal {
+	errorMessage: string;
+
+	constructor(app: App, errorMessage: string) {
+		super(app);
+		this.errorMessage = errorMessage;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.setText(`Failed to extract a DOI from the selected URL.\n${this.errorMessage}`);
 	}
 
 	onClose() {
