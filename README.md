@@ -6,7 +6,7 @@ Current version: `1.1.0`
 
 ## What it does
 
-The plugin currently provides 6 editor commands:
+The plugin currently provides 7 editor commands:
 
 1. `Search selected gene`
 Searches the selected text against the NCBI Clinical Tables gene API and replaces the selection with a bullet list of possible gene matches.
@@ -17,13 +17,16 @@ Uses the current note filename as gene symbol, queries HGNC, and inserts a small
 3. `DOI search`
 Looks up the selected DOI in Europe PMC, builds a paper note from a template, creates a new file, and replaces the selected DOI with a wiki-link to the created note.
 
-4. `URL DOI search`
+4. `DOI list search`
+Processes a selected newline-separated DOI list through the same Europe PMC workflow as `DOI search`, then replaces the original list with the created wiki-links.
+
+5. `URL DOI search`
 Fetches the selected URL, extracts a DOI from publisher metadata or page text, then runs the same Europe PMC workflow as `DOI search`.
 
-5. `Arxiv search`
+6. `Arxiv search`
 Looks up the selected arXiv ID via arXiv API, builds a paper note from a template, creates a new file, and replaces the selected ID with a wiki-link.
 
-6. `Biorxiv search`
+7. `Biorxiv search`
 Looks up the selected DOI via bioRxiv API, builds a paper note from a template, creates a new file, and replaces the selected DOI with a wiki-link.
 
 ## Settings
@@ -33,6 +36,7 @@ The plugin adds a settings tab with:
 - `Number of results`: max gene hits for `Search selected gene` (default: `5`)
 - `New files`: folder where article notes are created (default: `articles`)
 - `Template file path`: vault path to the article template (default: `templates/article-template.md`)
+- `Gene template file path`: vault path to the gene card template (default: `templates/gene-template.md`)
 
 ## Template placeholders
 
@@ -48,6 +52,33 @@ When creating article files, the plugin reads `Template file path` and replaces 
 - `{{date_added}}` (YYYY-MM-DD)
 
 If the template file does not exist or cannot be read, it falls back to a built-in template.
+
+When completing gene cards, the plugin reads `Gene template file path` and replaces these placeholders:
+
+- `{{symbol}}`
+- `{{genename}}`
+- `{{hgnc_id}}`
+- `{{hgnc_url}}`
+- `{{ncbi_gene_id}}`
+- `{{ncbi_url}}`
+- `{{ensembl_gene_id}}`
+- `{{ensembl_url}}`
+- `{{location}}`
+- `{{date_added}}` (YYYY-MM-DD)
+
+Default gene template:
+
+```markdown
+---
+genename: {{genename}}
+tags:
+  - gene
+---
+
+* links: [HGNC]({{hgnc_url}}), [NCBI]({{ncbi_url}})
+* location: {{location}}
+* ensembl gene id: {{ensembl_gene_id}}
+```
 
 ## File naming behavior
 

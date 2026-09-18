@@ -1,7 +1,7 @@
 
 import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault, requestUrl } from 'obsidian';
 import { extractDoiFromUrl, extractPaperInfo, generateMasterLink, generateLinkChain, parseArxivXML } from './utils';
-import { generateArticleTemplate } from './templates';
+import { generateArticleTemplate, generateGeneTemplate } from './templates';
 
 // Remember to rename these classes and interfaces!
 
@@ -9,12 +9,14 @@ interface MyPluginSettings {
 	hsNumber: string;
 	newFilesFolder: string;
 	templatePath: string;
+	geneTemplatePath: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	hsNumber: '5',
 	newFilesFolder: 'articles',
-	templatePath: 'templates/article-template.md'
+	templatePath: 'templates/article-template.md',
+	geneTemplatePath: 'templates/gene-template.md'
 }
 
 function sanitizeFileNameSegment(value: string): string {
@@ -93,6 +95,7 @@ export default class MyPlugin extends Plugin {
 				}
 				const hgnc_id = data[1][0];
 				const hgnc_url = `https://rest.genenames.org/fetch/hgnc_id/${hgnc_id}`;
+				const hgncReportUrl = `https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/${hgnc_id}`;
 
 				const hgncResponse = await fetch(hgnc_url, {
 					headers: {
@@ -101,21 +104,26 @@ export default class MyPlugin extends Plugin {
 				});
 				const hgncData = await hgncResponse.json();
 				const geneInfo = hgncData.response.docs[0];
-				const location = geneInfo.location;
-				const ensemblGeneId = geneInfo.ensembl_gene_id;
-				const ncbiGeneId = geneInfo.entrez_id;
-				const genename = geneInfo.name;
+				const location = geneInfo.location || "";
+				const ensemblGeneId = geneInfo.ensembl_gene_id || "";
+				const ncbiGeneId = geneInfo.entrez_id || "";
+				const genename = geneInfo.name || "";
 
-				const geneText = `---
-genename: ${genename}
-tags:
-  - gene
----
-
-* links: [Hugo](https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/${hgnc_id}), [ncbi](https://www.ncbi.nlm.nih.gov/gene/${ncbiGeneId}), 
-* location: ${location}
-* ensembl gene id: ${ensemblGeneId}
-`;
+				const geneText = await generateGeneTemplate(
+					this.app.vault,
+					this.settings.geneTemplatePath,
+					{
+						symbol: fbase,
+						genename,
+						hgncId: hgnc_id,
+						hgncUrl: hgncReportUrl,
+						ncbiGeneId,
+						ncbiUrl: `https://www.ncbi.nlm.nih.gov/gene/${ncbiGeneId}`,
+						ensemblGeneId,
+						ensemblUrl: ensemblGeneId ? `https://www.ensembl.org/Homo_sapiens/Gene/Summary?g=${ensemblGeneId}` : "",
+						location
+					}
+				);
 
 				editor.replaceRange(
 					geneText,
@@ -130,6 +138,15 @@ tags:
 			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
 				const selection = editor.getSelection();
 				await this.createEuropePmcArticleFromDoi(selection, editor);
+			}
+		});
+
+		this.addCommand({
+			id: 'retrieve-doi-list-info',
+			name: 'DOI list search',
+			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
+				const selection = editor.getSelection();
+				await this.createEuropePmcArticlesFromDoiList(selection, editor);
 			}
 		});
 
@@ -420,6 +437,50 @@ tags:
 		editor.replaceSelection(txtback);
 	}
 
+	async createEuropePmcArticlesFromDoiList(doiInput: string, editor: Editor) {
+		const seen = new Set<string>();
+		const dois = doiInput
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((doi) => {
+				if (!doi || seen.has(doi)) {
+					return false;
+				}
+
+				seen.add(doi);
+				return true;
+			});
+
+		if (dois.length === 0) {
+			new Notice('Select one DOI per line before running DOI list search.');
+			return;
+		}
+
+		const links: string[] = [];
+
+		for (const doi of dois) {
+			let replacement: string | null = null;
+			const captureEditor = {
+				replaceSelection: (text: string) => {
+					replacement = text;
+				}
+			} as Editor;
+
+			await this.createEuropePmcArticleFromDoi(doi, captureEditor);
+
+			if (replacement) {
+				links.push(replacement);
+			}
+		}
+
+		if (links.length === 0) {
+			new Notice('No article notes were created from the selected DOI list.');
+			return;
+		}
+
+		editor.replaceSelection(links.join('\n'));
+	}
+
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
@@ -682,6 +743,17 @@ class SampleSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.templatePath)
 				.onChange(async (value) => {
 					this.plugin.settings.templatePath = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Gene template file path')
+			.setDesc('Path to the gene card template file in your vault (e.g., templates/gene-template.md)')
+			.addText(text => text
+				.setPlaceholder('templates/gene-template.md')
+				.setValue(this.plugin.settings.geneTemplatePath)
+				.onChange(async (value) => {
+					this.plugin.settings.geneTemplatePath = value;
 					await this.plugin.saveSettings();
 				}));
 	}
