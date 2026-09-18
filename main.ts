@@ -358,8 +358,8 @@ export default class MyPlugin extends Plugin {
 		const url = new URL(base_url);
 		Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
 
-		const response = await fetch(url.toString());
-		const data = await response.json();
+		const response = await requestUrl({ url: url.toString() });
+		const data = response.json;
 
 		if (data.hitCount === 0) {
 			new ErrorNoPaperEuropePmc(this.app).open();
