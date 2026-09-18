@@ -62,8 +62,11 @@ the primary **local** checkout; it never publishes changes remotely.
    subject must accurately and imperatively describe the confirmed change and
    include `Co-authored-by: Codex <codex@openai.com>`. Do not amend, rebase, or
    absorb unrelated work.
-2. Capture the resulting source SHA. Verify that exact commit by checking out
-   no other revision and running:
+2. Capture the resulting source SHA. Before building, install dependencies with
+   `npm ci` only if this worktree has no `node_modules` directory. Use the
+   committed [`package-lock.json`](../../../package-lock.json) without changing
+   it; do not run `npm audit fix` or modify dependency versions. Verify that
+   exact commit by checking out no other revision and running:
 
    ```sh
    npm run build
@@ -88,7 +91,11 @@ the primary **local** checkout; it never publishes changes remotely.
    leave the primary checkout unchanged. Report that changes were **not
    landed**, list the paths, and pause for an explicit resolution decision.
    Never resolve conflicts automatically.
-4. Capture the integration commit SHA and run the exact build there:
+4. Capture the integration commit SHA. Before building in the agent-created
+   linked worktree, install its locked dependencies with `npm ci` when its
+   `node_modules` directory is absent; do not change
+   [`package-lock.json`](../../../package-lock.json) or dependency versions.
+   Run the exact build there:
 
    ```sh
    npm run build
