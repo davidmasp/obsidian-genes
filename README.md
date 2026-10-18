@@ -2,7 +2,7 @@
 
 Opinionated Obsidian plugin for gene lookup and paper-note generation from selected identifiers (DOI, arXiv, bioRxiv). 🧬
 
-Current version: `1.1.0`
+Current version: `1.2.0`
 
 ## What it does
 
@@ -15,13 +15,13 @@ Searches the selected text against the NCBI Clinical Tables gene API and replace
 Uses the current note filename as gene symbol, queries HGNC, and inserts a small gene card block (frontmatter + links + location + Ensembl/NCBI IDs) at the cursor.
 
 3. `DOI search`
-Looks up the selected DOI in Europe PMC, builds a paper note from a template, creates a new file, and replaces the selected DOI with a wiki-link to the created note.
+Looks up the selected DOI in Europe PMC, builds a paper note from a template, creates a new file, and replaces the selected DOI with a wiki-link to the created note. If Europe PMC has no record yet (common for very recently published articles), the lookup falls back to Crossref.
 
 4. `DOI list search`
-Processes a selected newline-separated DOI list through the same Europe PMC workflow as `DOI search`, then replaces the original list with the created wiki-links.
+Processes a selected newline-separated DOI list through the same workflow as `DOI search` (including the Crossref fallback), then replaces the original list with the created wiki-links.
 
 5. `URL DOI search`
-Fetches the selected URL, extracts a DOI from publisher metadata or page text, then runs the same Europe PMC workflow as `DOI search`.
+Fetches the selected URL, extracts a DOI from publisher metadata or page text, then runs the same workflow as `DOI search` (including the Crossref fallback).
 
 6. `Arxiv search`
 Looks up the selected arXiv ID via arXiv API, builds a paper note from a template, creates a new file, and replaces the selected ID with a wiki-link.
@@ -95,6 +95,7 @@ The plugin checks for duplicates both by target path and by basename across the 
 - Clinical Tables NCBI genes API
 - HGNC REST API (`rest.genenames.org`)
 - Europe PMC API
+- Crossref REST API (`api.crossref.org`) as a DOI fallback
 - arXiv API
 - bioRxiv API
 
@@ -127,4 +128,5 @@ just localbuild
 ## Notes
 
 - A ribbon icon and status bar item are present, but currently only show sample behavior.
+- DOI lookups prefer Europe PMC and fall back to Crossref when Europe PMC has not indexed the DOI yet. Crossref often has no abstract for Cell/Elsevier articles, so the note's abstract can be empty on the fallback path, and its link chain is shorter than Europe PMC's.
 - This plugin is intentionally tailored for a specific research workflow, not a general-purpose literature manager. 🔬

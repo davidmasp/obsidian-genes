@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-genes",
 	"name": "Genes",
-	"version": "1.1.0",
+	"version": "1.2.0",
 	"minAppVersion": "0.15.0",
 	"description": "Gene lookup and paper-note generation from DOI, arXiv, and bioRxiv identifiers.",
 	"author": "David Mas-Ponte",

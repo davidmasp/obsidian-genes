@@ -1,6 +1,7 @@
 
 import { TFile, App, Editor, MarkdownEditView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, Vault, requestUrl } from 'obsidian';
-import { extractDoiFromUrl, extractPaperInfo, generateMasterLink, generateLinkChain, parseArxivXML } from './utils';
+import { extractDoiFromUrl, buildEuropePmcMetadata, buildCrossrefMetadata, fetchCrossrefWork, parseArxivXML } from './utils';
+import type { PaperMetadata } from './utils';
 import { generateArticleTemplate, generateGeneTemplate } from './templates';
 
 // Remember to rename these classes and interfaces!
@@ -137,7 +138,7 @@ export default class MyPlugin extends Plugin {
 			name: 'DOI search',
 			editorCallback: async (editor: Editor, view: MarkdownEditView) => {
 				const selection = editor.getSelection();
-				await this.createEuropePmcArticleFromDoi(selection, editor);
+				await this.createArticleFromDoi(selection, editor);
 			}
 		});
 
@@ -163,7 +164,7 @@ export default class MyPlugin extends Plugin {
 						return;
 					}
 
-					await this.createEuropePmcArticleFromDoi(doi, editor);
+					await this.createArticleFromDoi(doi, editor);
 				} catch (error) {
 					const errorMessage = error instanceof Error ? error.message : String(error);
 					new ErrorDoiExtraction(this.app, errorMessage).open();
@@ -342,7 +343,7 @@ export default class MyPlugin extends Plugin {
 
 	}
 
-	async createEuropePmcArticleFromDoi(doiInput: string, editor: Editor) {
+	async createArticleFromDoi(doiInput: string, editor: Editor) {
 		const doiQuery = doiInput.trim();
 		const query = `DOI:"${doiQuery}"`;
 
@@ -361,41 +362,49 @@ export default class MyPlugin extends Plugin {
 		const response = await requestUrl({ url: url.toString() });
 		const data = response.json;
 
-		if (data.hitCount === 0) {
-			new ErrorNoPaperEuropePmc(this.app).open();
-			return;
-		}
-
-		if (data.hitCount !== 1) {
+		if (data.hitCount > 1) {
 			new ErrorUnexpectedEuropePmcHits(this.app, data.hitCount).open();
 			return;
 		}
 
-		const result = data.resultList.result[0];
-		const linkChain = generateLinkChain(result);
-		const masterLink = generateMasterLink(result);
+		if (data.hitCount === 1) {
+			const result = data.resultList.result[0];
+			await this.writeArticleNote(buildEuropePmcMetadata(result, doiQuery), editor);
+			return;
+		}
 
-		const author = result.authorString || "";
-		const abstract = result.abstractText || "";
-		const full_title = result.title || "";
-		const doi = result.doi || doiQuery;
+		// Europe PMC has not indexed this DOI yet (common for very recent articles).
+		// Fall back to Crossref, which registers DOIs at publication time.
+		const crossrefMessage = await fetchCrossrefWork(doiQuery);
+		if (!crossrefMessage) {
+			new ErrorNoPaperEuropePmc(this.app).open();
+			return;
+		}
 
-		const [auth_name, journal_name, year_name] = extractPaperInfo(result);
+		const metadata = buildCrossrefMetadata(crossrefMessage, doiQuery);
+		if (!metadata.abstract) {
+			new Notice('Note created from Crossref: no abstract available for this DOI.');
+		}
+		await this.writeArticleNote(metadata, editor);
+	}
+
+	async writeArticleNote(metadata: PaperMetadata, editor: Editor) {
+		console.log(`Creating article note from ${metadata.source} metadata for DOI ${metadata.doi}`);
 
 		const articleTxt = await generateArticleTemplate(
 			this.app.vault,
 			this.settings.templatePath,
-			masterLink,
-			linkChain,
-			journal_name,
-			full_title,
-			author,
-			abstract,
-			doi
+			metadata.masterLink,
+			metadata.linkChain,
+			metadata.journal,
+			metadata.title,
+			metadata.authors,
+			metadata.abstract,
+			metadata.doi
 		)
 
 		const folder = this.settings.newFilesFolder.replace(/\/+$/, '');
-		const rawSlug = `${auth_name} ${journal_name} ${year_name}`;
+		const rawSlug = `${metadata.firstAuthorLastname} ${metadata.journal} ${metadata.year}`;
 		const slug = sanitizeFileNameSegment(rawSlug);
 		if (!slug) {
 			new ErrorInvalidArticleName(this.app, rawSlug).open();
@@ -466,7 +475,7 @@ export default class MyPlugin extends Plugin {
 				}
 			} as Editor;
 
-			await this.createEuropePmcArticleFromDoi(doi, captureEditor);
+			await this.createArticleFromDoi(doi, captureEditor);
 
 			if (replacement) {
 				links.push(replacement);
